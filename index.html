@@ -1,101 +1,452 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Meu Jogo de Tiro IA</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Game - Meu Jogo IA</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; }
-        #instrucoes {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            color: white; font-family: sans-serif; text-align: center;
-            background: rgba(0,0,0,0.7); padding: 20px; cursor: pointer;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        #gameContainer {
+            position: relative;
+            width: 90%;
+            max-width: 1200px;
+            height: 90vh;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        #hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #00ff00;
+            font-size: 18px;
+            font-weight: bold;
+            z-index: 10;
+            text-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+        }
+
+        #ammo {
+            margin-top: 10px;
+            color: #ffaa00;
+        }
+
+        #health {
+            margin-top: 10px;
+            color: #ff4444;
+        }
+
+        #score {
+            margin-top: 10px;
+            color: #44ff44;
+        }
+
+        .info-text {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #00ff00;
+            font-size: 16px;
+            text-align: center;
+            z-index: 10;
+            text-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+        }
+
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 30px;
+            height: 30px;
+            border: 2px solid #00ff00;
+            border-radius: 50%;
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        #crosshair::before,
+        #crosshair::after {
+            content: '';
+            position: absolute;
+            background: #00ff00;
+        }
+
+        #crosshair::before {
+            width: 10px;
+            height: 2px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        #crosshair::after {
+            width: 2px;
+            height: 10px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .shooting {
+            animation: pulse 0.1s;
         }
     </style>
 </head>
 <body>
-    <div id="instrucoes"><h1>CLIQUE PARA JOGAR</h1><p>Use o Mouse para girar e Clique para Atirar</p></div>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        <div id="hud">
+            <div>FPS: <span id="fps">60</span></div>
+            <div id="ammo">Ammo: <span id="ammoCount">30</span></div>
+            <div id="health">Health: <span id="healthCount">100</span></div>
+            <div id="score">Score: <span id="scoreCount">0</span></div>
+        </div>
+        <div id="crosshair"></div>
+        <div class="info-text">
+            Use MOUSE to AIM | CLICK to SHOOT | SPACEBAR to RELOAD
+        </div>
+    </div>
 
-    <script type="importmap">
-        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
-    </script>
+    <script>
+        // Initialize Three.js scene
+        const canvas = document.getElementById('gameCanvas');
+        const width = canvas.clientWidth;
+        const height = canvas.clientHeight;
 
-    <script type="module">
-        import * as THREE from 'three';
-        import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+        // Simplified 3D using canvas and 2D/3D math
+        const ctx = canvas.getContext('2d');
+        canvas.width = width;
+        canvas.height = height;
 
-        let cena, camera, renderizador, arma, somTiro;
+        // Game state
+        const gameState = {
+            health: 100,
+            maxHealth: 100,
+            ammo: 30,
+            maxAmmo: 30,
+            score: 0,
+            mouseX: 0,
+            mouseY: 0,
+            isReloading: false,
+            lastShotTime: 0,
+            shotCooldown: 100
+        };
 
-        // 1. Configuração Básica
-        cena = new THREE.Scene();
-        cena.background = new THREE.Color(0x222222);
-        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        
-        renderizador = new THREE.WebGLRenderer({ antialias: true });
-        renderizador.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderizador.domElement);
-
-        // Luzes
-        const luzDirecional = new THREE.DirectionalLight(0xffffff, 3);
-        luzDirecional.position.set(5, 5, 5);
-        cena.add(luzDirecional);
-        cena.add(new THREE.AmbientLight(0xffffff, 0.5));
-
-        // 2. Carregar o Som
-        const listener = new THREE.AudioListener();
-        camera.add(listener);
-        somTiro = new THREE.Audio(listener);
-        const audioLoader = new THREE.AudioLoader();
-        audioLoader.load('8tlywloxdyv-firing-sfx-2.mp3', (buffer) => {
-            somTiro.setBuffer(buffer);
-            somTiro.setVolume(0.5);
-        });
-
-        // 3. Carregar a Arma (Seu modelo OBJ)
-        const loader = OBJLoader;
-        const objLoader = new OBJLoader();
-        objLoader.load('SS 55 GUN (5).obj', (objeto) => {
-            arma = objeto;
-            arma.scale.set(0.1, 0.1, 0.1); // Ajusta o tamanho
-            arma.position.set(0.5, -0.5, -1); // Posiciona na frente da câmera
-            camera.add(arma);
-            cena.add(camera);
-        });
-
-        // 4. Controles e Tiro
-        document.addEventListener('click', () => {
-            if (somTiro && somTiro.buffer) {
-                if (somTiro.isPlaying) somTiro.stop();
-                somTiro.play();
+        // Simple 3D Box class
+        class Box {
+            constructor(x, y, z, size) {
+                this.x = x;
+                this.y = y;
+                this.z = z;
+                this.size = size;
+                this.rotX = 0;
+                this.rotY = 0;
+                this.rotZ = 0;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.vz = (Math.random() - 0.5) * 2;
+                this.health = 3;
             }
-            // Animação simples de coice da arma
-            if (arma) {
-                arma.position.z += 0.1;
-                setTimeout(() => arma.position.z -= 0.1, 50);
-            }
-            document.getElementById('instrucoes').style.display = 'none';
-            document.body.requestPointerLock();
-        });
 
-        // Movimento do Mouse
-        document.addEventListener('mousemove', (e) => {
-            if (document.pointerLockElement === document.body) {
-                camera.rotation.y -= e.movementX * 0.002;
-                camera.rotation.x -= e.movementY * 0.002;
-            }
-        });
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.z += this.vz;
+                this.rotX += 0.02;
+                this.rotY += 0.03;
+                this.rotZ += 0.01;
 
-        // Loop de Renderização
-        function animar() {
-            requestAnimationFrame(animar);
-            renderizador.render(cena, camera);
+                // Bounce off walls
+                if (this.x - this.size < -100) this.vx = Math.abs(this.vx);
+                if (this.x + this.size > 100) this.vx = -Math.abs(this.vx);
+                if (this.y - this.size < -50) this.vy = Math.abs(this.vy);
+                if (this.y + this.size > 50) this.vy = -Math.abs(this.vy);
+                if (this.z < 20) this.vz = Math.abs(this.vz);
+                if (this.z > 400) this.vz = -Math.abs(this.vz);
+            }
+
+            project(fov = 500) {
+                const perspective = fov / (fov + this.z);
+                const sx = width / 2 + this.x * perspective;
+                const sy = height / 2 - this.y * perspective;
+                const scale = this.size * perspective;
+                return { sx, sy, scale, z: this.z };
+            }
+
+            draw(ctx) {
+                const proj = this.project();
+                ctx.save();
+                ctx.globalAlpha = 0.8;
+                ctx.fillStyle = this.health < 3 ? '#ff4444' : this.health < 2 ? '#ffaa00' : '#00ff88';
+                ctx.strokeStyle = '#00ff00';
+                ctx.lineWidth = 2;
+
+                // Draw cube face
+                ctx.fillRect(
+                    proj.sx - proj.scale / 2,
+                    proj.sy - proj.scale / 2,
+                    proj.scale,
+                    proj.scale
+                );
+                ctx.strokeRect(
+                    proj.sx - proj.scale / 2,
+                    proj.sy - proj.scale / 2,
+                    proj.scale,
+                    proj.scale
+                );
+
+                // Draw inner details
+                ctx.strokeStyle = 'rgba(0, 255, 136, 0.3)';
+                ctx.beginPath();
+                ctx.moveTo(proj.sx - proj.scale / 4, proj.sy - proj.scale / 2);
+                ctx.lineTo(proj.sx - proj.scale / 4, proj.sy + proj.scale / 2);
+                ctx.moveTo(proj.sx + proj.scale / 4, proj.sy - proj.scale / 2);
+                ctx.lineTo(proj.sx + proj.scale / 4, proj.sy + proj.scale / 2);
+                ctx.moveTo(proj.sx - proj.scale / 2, proj.sy - proj.scale / 4);
+                ctx.lineTo(proj.sx + proj.scale / 2, proj.sy - proj.scale / 4);
+                ctx.moveTo(proj.sx - proj.scale / 2, proj.sy + proj.scale / 4);
+                ctx.lineTo(proj.sx + proj.scale / 2, proj.sy + proj.scale / 4);
+                ctx.stroke();
+
+                ctx.restore();
+            }
+
+            isHitByRay(mx, my) {
+                const proj = this.project();
+                const dist = Math.sqrt(
+                    Math.pow(mx - proj.sx, 2) + Math.pow(my - proj.sy, 2)
+                );
+                return dist < proj.scale / 2;
+            }
         }
-        animar();
 
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderizador.setSize(window.innerWidth, window.innerHeight);
+        // Initialize enemies
+        let enemies = [];
+        function spawnEnemy() {
+            const x = (Math.random() - 0.5) * 150;
+            const y = (Math.random() - 0.5) * 80;
+            const z = Math.random() * 200 + 100;
+            enemies.push(new Box(x, y, z, 15));
+        }
+
+        // Spawn initial enemies
+        for (let i = 0; i < 5; i++) {
+            spawnEnemy();
+        }
+
+        // Audio context for sound effects
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+        function playFireSound() {
+            const now = audioContext.currentTime;
+            
+            // Create a short burst sound using oscillators
+            const osc = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            
+            osc.connect(gain);
+            gain.connect(audioContext.destination);
+            
+            // Frequency sweep for gun sound
+            osc.frequency.setValueAtTime(400, now);
+            osc.frequency.exponentialRampToValueAtTime(100, now + 0.1);
+            
+            // Volume envelope
+            gain.gain.setValueAtTime(0.3, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+            
+            osc.start(now);
+            osc.stop(now + 0.1);
+
+            // Add a noise component for more realistic sound
+            const noiseBuffer = audioContext.createBufferSource();
+            const bufferSize = audioContext.sampleRate * 0.1;
+            const noiseAudioBuffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+            const noiseData = noiseAudioBuffer.getChannelData(0);
+            
+            for (let i = 0; i < bufferSize; i++) {
+                noiseData[i] = Math.random() * 2 - 1;
+            }
+            
+            noiseBuffer.buffer = noiseAudioBuffer;
+            const noiseGain = audioContext.createGain();
+            noiseBuffer.connect(noiseGain);
+            noiseGain.connect(audioContext.destination);
+            
+            noiseGain.gain.setValueAtTime(0.2, now);
+            noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+            
+            noiseBuffer.start(now);
+            noiseBuffer.stop(now + 0.05);
+        }
+
+        function playHitSound() {
+            const now = audioContext.currentTime;
+            const osc = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            
+            osc.connect(gain);
+            gain.connect(audioContext.destination);
+            
+            osc.frequency.setValueAtTime(800, now);
+            osc.frequency.exponentialRampToValueAtTime(200, now + 0.15);
+            
+            gain.gain.setValueAtTime(0.2, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+            
+            osc.start(now);
+            osc.stop(now + 0.15);
+        }
+
+        // Draw background (space)
+        function drawBackground() {
+            ctx.fillStyle = '#000814';
+            ctx.fillRect(0, 0, width, height);
+
+            // Draw stars
+            ctx.fillStyle = '#ffffff';
+            for (let i = 0; i < 100; i++) {
+                const x = (i * 37 + Math.sin(i) * 100) % width;
+                const y = (i * 53 + Math.cos(i) * 100) % height;
+                const size = Math.sin(i) * 0.5 + 0.5;
+                ctx.fillRect(x, y, size, size);
+            }
+
+            // Draw grid
+            ctx.strokeStyle = 'rgba(0, 255, 136, 0.1)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < width; i += 50) {
+                ctx.beginPath();
+                ctx.moveTo(i, 0);
+                ctx.lineTo(i, height);
+                ctx.stroke();
+            }
+            for (let i = 0; i < height; i += 50) {
+                ctx.beginPath();
+                ctx.moveTo(0, i);
+                ctx.lineTo(width, i);
+                ctx.stroke();
+            }
+        }
+
+        // Game loop
+        let frameCount = 0;
+        let lastFpsTime = Date.now();
+
+        function gameLoop() {
+            // Update FPS
+            frameCount++;
+            const now = Date.now();
+            if (now - lastFpsTime >= 1000) {
+                document.getElementById('fps').textContent = frameCount;
+                frameCount = 0;
+                lastFpsTime = now;
+            }
+
+            // Update game state
+            enemies.forEach(enemy => enemy.update());
+
+            // Remove far enemies and spawn new ones
+            enemies = enemies.filter(e => e.z < 400);
+            if (enemies.length < 5) {
+                spawnEnemy();
+            }
+
+            // Sort enemies by z-depth
+            enemies.sort((a, b) => a.z - b.z);
+
+            // Draw
+            drawBackground();
+            enemies.forEach(enemy => enemy.draw(ctx));
+
+            // Update HUD
+            document.getElementById('ammoCount').textContent = gameState.ammo;
+            document.getElementById('healthCount').textContent = gameState.health;
+            document.getElementById('scoreCount').textContent = gameState.score;
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Input handling
+        document.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            gameState.mouseX = e.clientX - rect.left;
+            gameState.mouseY = e.clientY - rect.top;
         });
+
+        canvas.addEventListener('click', () => {
+            const now = Date.now();
+            if (now - gameState.lastShotTime < gameState.shotCooldown) return;
+            if (gameState.ammo <= 0) return;
+
+            gameState.lastShotTime = now;
+            gameState.ammo--;
+
+            playFireSound();
+
+            // Visual feedback
+            document.getElementById('crosshair').classList.add('shooting');
+            setTimeout(() => {
+                document.getElementById('crosshair').classList.remove('shooting');
+            }, 100);
+
+            // Check hits
+            for (let enemy of enemies) {
+                if (enemy.isHitByRay(gameState.mouseX, gameState.mouseY)) {
+                    enemy.health--;
+                    playHitSound();
+                    gameState.score += 10;
+
+                    if (enemy.health <= 0) {
+                        enemies.splice(enemies.indexOf(enemy), 1);
+                        gameState.score += 40;
+                        spawnEnemy();
+                    }
+                    break;
+                }
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                gameState.ammo = gameState.maxAmmo;
+            }
+        });
+
+        // Start game loop
+        gameLoop();
     </script>
 </body>
 </html>
