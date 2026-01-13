@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Meu Jogo de Tiro IA</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        #instrucoes {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: white; font-family: sans-serif; text-align: center;
+            background: rgba(0,0,0,0.7); padding: 20px; cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="instrucoes"><h1>CLIQUE PARA JOGAR</h1><p>Use o Mouse para girar e Clique para Atirar</p></div>
+
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+
+        let cena, camera, renderizador, arma, somTiro;
+
+        // 1. Configuração Básica
+        cena = new THREE.Scene();
+        cena.background = new THREE.Color(0x222222);
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        
+        renderizador = new THREE.WebGLRenderer({ antialias: true });
+        renderizador.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderizador.domElement);
+
+        // Luzes
+        const luzDirecional = new THREE.DirectionalLight(0xffffff, 3);
+        luzDirecional.position.set(5, 5, 5);
+        cena.add(luzDirecional);
+        cena.add(new THREE.AmbientLight(0xffffff, 0.5));
+
+        // 2. Carregar o Som
+        const listener = new THREE.AudioListener();
+        camera.add(listener);
+        somTiro = new THREE.Audio(listener);
+        const audioLoader = new THREE.AudioLoader();
+        audioLoader.load('8tlywloxdyv-firing-sfx-2.mp3', (buffer) => {
+            somTiro.setBuffer(buffer);
+            somTiro.setVolume(0.5);
+        });
+
+        // 3. Carregar a Arma (Seu modelo OBJ)
+        const loader = OBJLoader;
+        const objLoader = new OBJLoader();
+        objLoader.load('SS 55 GUN (5).obj', (objeto) => {
+            arma = objeto;
+            arma.scale.set(0.1, 0.1, 0.1); // Ajusta o tamanho
+            arma.position.set(0.5, -0.5, -1); // Posiciona na frente da câmera
+            camera.add(arma);
+            cena.add(camera);
+        });
+
+        // 4. Controles e Tiro
+        document.addEventListener('click', () => {
+            if (somTiro && somTiro.buffer) {
+                if (somTiro.isPlaying) somTiro.stop();
+                somTiro.play();
+            }
+            // Animação simples de coice da arma
+            if (arma) {
+                arma.position.z += 0.1;
+                setTimeout(() => arma.position.z -= 0.1, 50);
+            }
+            document.getElementById('instrucoes').style.display = 'none';
+            document.body.requestPointerLock();
+        });
+
+        // Movimento do Mouse
+        document.addEventListener('mousemove', (e) => {
+            if (document.pointerLockElement === document.body) {
+                camera.rotation.y -= e.movementX * 0.002;
+                camera.rotation.x -= e.movementY * 0.002;
+            }
+        });
+
+        // Loop de Renderização
+        function animar() {
+            requestAnimationFrame(animar);
+            renderizador.render(cena, camera);
+        }
+        animar();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderizador.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
